@@ -1,37 +1,65 @@
 """
 Baseline inference script — Prescription Validator OpenEnv
-Required filename: inference.py (placed in project root)
+Filename: inference.py (root directory)
 
-Required environment variables:
-  API_BASE_URL  — LLM endpoint (e.g. https://api.openai.com/v1)
-  MODEL_NAME    — Model identifier (e.g. gpt-4o-mini)
-  HF_TOKEN      — Hugging Face token (used as API key for HF-hosted models)
-  OPENAI_API_KEY — OpenAI API key (fallback)
-  ENV_URL       — Deployed HF Space URL (default: http://localhost:7860)
+Log format (required by judges):
+  [START] task=<task_id> env=rx-validator-env model=<MODEL_NAME>
+  [STEP] step=<n> action=<action_summary> reward=<0.00> done=<true/false> error=<null|msg>
+  [END] success=<true/false> steps=<n> rewards=<0.00,...>
+
+Required env vars:
+  HF_TOKEN      — Hugging Face token (used as API key)
+  API_BASE_URL  — LLM endpoint (default: HF router)
+  MODEL_NAME    — Model identifier
+  ENV_URL       — Deployed HF Space URL
 """
 
 import os
 import json
 import requests
+from typing import Optional
 from openai import OpenAI
 
 # ── Config ────────────────────────────────────────────────────────────────────
-HF_TOKEN      = os.environ.get("HF_TOKEN", "")
-API_BASE_URL  = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME    = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-ENV_URL       = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
+HF_TOKEN     = os.environ.get("HF_TOKEN", "")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_URL      = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
 
 client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+
 SYSTEM_PROMPT = (
     "You are a highly skilled clinical pharmacist AI. "
     "You validate prescriptions with precision and always respond in valid JSON only."
 )
 
-# ── Agent ─────────────────────────────────────────────────────────────────────
+MAX_STEPS = 5
+SUCCESS_THRESHOLD = 0.5
+
+# ── Logging (required format) ─────────────────────────────────────────────────
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, rewards: list) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    success_val = str(success).lower()
+    print(f"[END] success={success_val} steps={steps} rewards={rewards_str}", flush=True)
+
+
+# ── LLM Call ──────────────────────────────────────────────────────────────────
 
 def call_llm(obs: dict) -> dict:
-    """Send observation to LLM, return Action dict."""
-
     patient = obs.get("patient", {})
     prescriptions = obs.get("prescriptions", [])
     instruction = obs.get("instruction", "")
@@ -43,33 +71,29 @@ def call_llm(obs: dict) -> dict:
         f"Pediatric: {patient.get('is_pediatric')}"
     )
 
-    if prescriptions:
-        pres_lines = []
-        for p in prescriptions:
-            pres_lines.append(
-                f"  Drug: {p['drug_name']}, Dose: {p['dose_mg']}mg, "
-                f"Frequency: {p['frequency']}, Route: {p['route']}, "
-                f"Duration: {p['duration_days']} days"
-            )
-        prescriptions_text = "Prescriptions:\n" + "\n".join(pres_lines)
-    else:
-        prescriptions_text = "No prescriptions provided."
+    pres_lines = []
+    for p in prescriptions:
+        pres_lines.append(
+            f"  Drug: {p['drug_name']}, Dose: {p['dose_mg']}mg, "
+            f"Frequency: {p['frequency']}, Route: {p['route']}, "
+            f"Duration: {p['duration_days']} days"
+        )
+    prescriptions_text = "Prescriptions:\n" + "\n".join(pres_lines) if pres_lines else "No prescriptions."
 
-    schema_note = ""
     if task_id == "task1":
         schema_note = (
-            "Return JSON with fields: drug_name (string), is_valid (bool), "
+            "Return JSON with: drug_name (string), is_valid (bool), "
             "drug_class (string or null), flag_dangerous (bool), reason (string)."
         )
     elif task_id == "task2":
         schema_note = (
-            "Return JSON with fields: drug_name (string), is_valid (bool), "
-            "drug_class (string), verdict (one of: safe/overdose/underdose), "
+            "Return JSON with: drug_name (string), is_valid (bool), "
+            "drug_class (string), verdict (safe/overdose/underdose), "
             "recommended_dose_mg (number), flag_dangerous (bool), reason (string)."
         )
     else:
         schema_note = (
-            "Return JSON with fields: drug_name (string, use first drug), is_valid (bool), "
+            "Return JSON with: drug_name (string, use first drug), is_valid (bool), "
             "verdict (safe_to_dispense or do_not_dispense), "
             "flag_dangerous (bool), "
             "interactions_found (list of strings describing each interaction), "
@@ -84,13 +108,13 @@ def call_llm(obs: dict) -> dict:
 
 {schema_note}
 
-Important rules:
-- For pediatric patients (is_pediatric=true), check age-based contraindications (e.g., Aspirin under 12 → Reye's syndrome; Ciprofloxacin under 18 → contraindicated)
-- Flag any drug-drug interactions: Warfarin+Aspirin, Warfarin+Ibuprofen, Ibuprofen+Warfarin are HIGH risk
-- Dose outside the therapeutic range → verdict overdose/underdose
-- flag_dangerous=true whenever there is a contraindication, HIGH interaction, or dose emergency
+Rules:
+- Aspirin in children under 12 -> contraindicated (Reye's syndrome) -> flag_dangerous=true
+- Ciprofloxacin under 18 -> contraindicated -> flag_dangerous=true
+- Warfarin + Aspirin or Ibuprofen -> HIGH bleeding risk -> flag_dangerous=true
+- Dose above therapeutic range -> overdose -> flag_dangerous=true if severe
 
-Respond with JSON only, no markdown, no extra text:"""
+Respond with JSON only, no markdown:"""
 
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -99,12 +123,11 @@ Respond with JSON only, no markdown, no extra text:"""
             {"role": "user", "content": prompt},
         ],
         temperature=0,
-        max_tokens=800,
+        max_tokens=600,
     )
 
     content = response.choices[0].message.content.strip()
 
-    # Strip markdown fences if present
     if "```" in content:
         for part in content.split("```"):
             stripped = part.strip()
@@ -121,27 +144,56 @@ Respond with JSON only, no markdown, no extra text:"""
 # ── Task Runner ───────────────────────────────────────────────────────────────
 
 def run_task(task_id: str) -> float:
-    print(f"  Resetting to {task_id}...")
-    resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
-    resp.raise_for_status()
-    obs = resp.json()
+    log_start(task=task_id, env="rx-validator-env", model=MODEL_NAME)
 
-    print(f"  Calling LLM...")
+    # Reset environment
     try:
-        action = call_llm(obs)
+        resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
+        resp.raise_for_status()
+        obs = resp.json()
     except Exception as e:
-        print(f"  LLM error: {e}")
+        log_step(1, "reset", 0.00, True, str(e))
+        log_end(False, 1, [0.0])
         return 0.0
 
-    print(f"  Sending action: {json.dumps(action, indent=2)[:300]}...")
-    step_resp = requests.post(f"{ENV_URL}/step", json=action, timeout=30)
-    step_resp.raise_for_status()
-    result = step_resp.json()
+    rewards = []
+    final_reward = 0.0
 
-    reward = result.get("reward", 0.0)
-    info = result.get("info", {})
-    print(f"  Reward: {reward:.4f} | {info.get('grader_feedback', 'no feedback')}")
-    return reward
+    for step_num in range(1, MAX_STEPS + 1):
+        # Call LLM
+        try:
+            action = call_llm(obs)
+            action_summary = f"validate({action.get('drug_name','?')})"
+        except Exception as e:
+            log_step(step_num, "llm_call", 0.00, True, str(e))
+            log_end(False, step_num, rewards + [0.0])
+            return final_reward
+
+        # Send action to environment
+        try:
+            step_resp = requests.post(f"{ENV_URL}/step", json=action, timeout=30)
+            step_resp.raise_for_status()
+            result = step_resp.json()
+        except Exception as e:
+            log_step(step_num, action_summary, 0.00, True, str(e))
+            log_end(False, step_num, rewards + [0.0])
+            return final_reward
+
+        reward = result.get("reward", 0.0)
+        done = result.get("done", True)
+        rewards.append(reward)
+        final_reward = reward
+
+        log_step(step_num, action_summary, reward, done, None)
+
+        if done:
+            break
+
+        obs = result.get("observation", obs)
+
+    success = final_reward >= SUCCESS_THRESHOLD
+    log_end(success, len(rewards), rewards)
+    return final_reward
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -149,26 +201,22 @@ def run_task(task_id: str) -> float:
 def main():
     print("=" * 60)
     print("  Prescription Validator OpenEnv — Baseline Inference")
-    print("=" * 60)
     print(f"  Model  : {MODEL_NAME}")
+    print(f"  Router : {API_BASE_URL}")
     print(f"  Env URL: {ENV_URL}")
-    print()
-
-    TASK_IDS = ["task1", "task2", "task3"]
-    scores = {}
-
-    for task_id in TASK_IDS:
-        print(f"[{task_id.upper()}] Running...")
-        try:
-            score = run_task(task_id)
-            scores[task_id] = round(score, 4)
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            scores[task_id] = 0.0
-        print()
-
     print("=" * 60)
-    print("  BASELINE SCORES")
+
+    scores = {}
+    for task_id in ["task1", "task2", "task3"]:
+        print(f"\n--- Running {task_id} ---")
+        try:
+            scores[task_id] = round(run_task(task_id), 4)
+        except Exception as e:
+            print(f"ERROR: {e}")
+            scores[task_id] = 0.0
+
+    print("\n" + "=" * 60)
+    print("  FINAL SCORES")
     print("=" * 60)
     for tid, s in scores.items():
         bar = "█" * int(s * 25)
@@ -176,9 +224,8 @@ def main():
     avg = sum(scores.values()) / len(scores)
     print(f"\n  Average: {avg:.4f}")
     print("=" * 60)
-
     return scores
 
 
 if __name__ == "__main__":
-    main()
+    main()        
