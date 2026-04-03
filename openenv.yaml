@@ -1,0 +1,118 @@
+name: rx-validator-env
+version: "1.0.0"
+description: >
+  A real-world OpenEnv environment simulating a hospital pharmacy validation system.
+  AI agents learn to validate medical prescriptions by identifying drugs, verifying 
+  adult dosages, and catching dangerous pediatric drug interactions.
+author: participant
+tags:
+  - openenv
+  - pharmacy
+  - healthcare
+  - prescription-validation
+  - drug-safety
+  - pediatrics
+
+observation:
+  type: object
+  properties:
+    task_id:
+      type: string
+      description: Task identifier (task1/task2/task3)
+    task_name:
+      type: string
+    difficulty:
+      type: string
+      enum: [easy, medium, hard]
+    patient:
+      type: object
+      properties:
+        age_years: { type: integer }
+        weight_kg: { type: number }
+        sex: { type: string }
+        is_pediatric: { type: boolean }
+    prescriptions:
+      type: array
+      items:
+        type: object
+        properties:
+          drug_name: { type: string }
+          dose_mg: { type: number }
+          frequency: { type: string }
+          route: { type: string }
+          duration_days: { type: integer }
+    instruction:
+      type: string
+    step_count:
+      type: integer
+
+action:
+  type: object
+  required: [drug_name, is_valid, flag_dangerous]
+  properties:
+    drug_name:
+      type: string
+      description: Primary drug name being evaluated
+    is_valid:
+      type: boolean
+      description: Is the drug name recognized and valid?
+    drug_class:
+      type: string
+      description: Pharmacological class (e.g., antibiotic, NSAID)
+    verdict:
+      type: string
+      enum: [safe, overdose, underdose, safe_to_dispense, do_not_dispense]
+    recommended_dose_mg:
+      type: number
+      description: Midpoint of correct therapeutic dose for this patient
+    flag_dangerous:
+      type: boolean
+      description: True if prescription poses immediate patient safety risk
+    interactions_found:
+      type: array
+      items: { type: string }
+      description: List of drug-drug interactions identified
+    reason:
+      type: string
+      description: Clinical justification for the decision
+
+tasks:
+  - id: task1
+    name: drug_identification
+    difficulty: easy
+    description: >
+      Agent receives one prescription. Must identify if the drug name is valid,
+      determine its pharmacological class, and flag fraudulent/misspelled names.
+      Grading: 50% validity, 40% drug class, 10% danger flag.
+
+  - id: task2
+    name: adult_dosage_verification
+    difficulty: medium
+    description: >
+      Agent receives a prescription for an adult patient. Must verify whether the 
+      prescribed dose is safe, an overdose, or an underdose based on standard 
+      therapeutic ranges. Must also recommend the correct dose.
+      Grading: 50% verdict, 20% danger flag, 15% dose recommendation, 15% validity.
+
+  - id: task3
+    name: pediatric_interaction_check
+    difficulty: hard
+    description: >
+      Agent receives a multi-drug prescription for a pediatric patient. Must catch 
+      ALL drug-drug interactions, identify age-based contraindications (e.g., 
+      Aspirin in children <12 → Reye's syndrome), and verify weight-based dosing.
+      Grading: 35% danger flag, 30% interactions caught, 20% contraindications, 15% verdict.
+
+reward:
+  range: [0.0, 1.0]
+  type: continuous
+  description: >
+    Graded across clinical accuracy dimensions. Partial credit for near-correct 
+    answers. Missing a dangerous condition in Task 3 (e.g., a contraindication 
+    in a child) results in near-zero score — reflecting real clinical consequences. 
+    Small bonus (+0.02) for making any valid attempt.
+
+endpoints:
+  reset: "POST /reset"
+  step: "POST /step"
+  state: "GET /state"
