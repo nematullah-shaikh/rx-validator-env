@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -37,8 +37,12 @@ def health():
 
 
 @app.post("/reset", response_model=Observation)
-def reset(request: Optional[ResetRequest] = None):
-    task_id = request.task_id if request and request.task_id else "task1"
+async def reset(request: Request):
+    try:
+        body = await request.json()
+        task_id = body.get("task_id", "task1")
+    except:
+        task_id = "task1"
     return env.reset(task_id=task_id)
 
 
