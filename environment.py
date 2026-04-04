@@ -26,8 +26,13 @@ class RxValidatorEnv:
         self._last_reward = 0.0
         self._episode_rewards = []
 
-        # Extract patient + prescriptions from scenario
-        self._patient = self._scenario.get("patient", self._scenario.get("patient", None))
+        # ✅ FIXED (IMPORTANT)
+        self._patient = self._scenario.get(
+            "patient",
+            Patient(age_years=30, weight_kg=70.0, sex="male", is_pediatric=False)
+        )
+
+        # prescriptions fix
         pres = self._scenario.get("prescription")
         if pres:
             self._prescriptions = [pres]
@@ -48,15 +53,12 @@ class RxValidatorEnv:
         self._step_count += 1
         task_cls = TASKS[self._task_id]
 
-        # Grade the action
         score, feedback = task_cls.grade(action, self._scenario)
 
-        # Shaped reward: score + small step bonus for attempting
         reward = round(min(1.0, score + 0.02 * (1.0 - score)), 4)
         self._last_reward = reward
         self._episode_rewards.append(reward)
 
-        # Each episode is single-turn: one prescription → one action → done
         self._done = True
 
         return StepResponse(
@@ -91,4 +93,4 @@ class RxValidatorEnv:
             prescriptions=self._prescriptions,
             instruction=task_cls.instruction,
             step_count=self._step_count,
-      )
+        )
