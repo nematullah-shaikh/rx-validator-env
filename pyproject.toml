@@ -1,0 +1,17 @@
+[project]
+name = "rx-validator-env"
+version = "1.0.0"
+description = "Prescription validation OpenEnv environment"
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "requests",
+    "openai"
+]
+
+[tool.openenv]
+env_id = "rx-validator-env"
+entry_point = "app:app"
