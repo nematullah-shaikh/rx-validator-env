@@ -14,8 +14,8 @@ dependencies = [
 ]
 
 [project.scripts]
-server = "app:app"
+server = "server.app:main"
 
 [tool.openenv]
 env_id = "rx-validator-env"
-entry_point = "app:app"
+entry_point = "server.app:main"
