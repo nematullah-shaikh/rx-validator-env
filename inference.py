@@ -140,7 +140,7 @@ Respond with JSON only, no markdown:"""
                 break
 
     def call_llm(obs: dict) -> dict:
-    try:
+        try:
         patient = obs.get("patient", {})
         prescriptions = obs.get("prescriptions", [])
         instruction = obs.get("instruction", "")
