@@ -140,12 +140,35 @@ Respond with JSON only, no markdown:"""
                 break
 
     def call_llm(obs: dict) -> dict:
-        try:
+    try:
         patient = obs.get("patient", {})
         prescriptions = obs.get("prescriptions", [])
         instruction = obs.get("instruction", "")
+        task_id = obs.get("task_id", "task1")
 
-        prompt = f"{instruction}\nPatient: {patient}\nPrescriptions: {prescriptions}"
+        patient_text = (
+            f"Patient: {patient.get('age_years')} years old, "
+            f"{patient.get('weight_kg')} kg, {patient.get('sex')}, "
+            f"Pediatric: {patient.get('is_pediatric')}"
+        )
+
+        pres_lines = []
+        for p in prescriptions:
+            pres_lines.append(
+                f"  Drug: {p['drug_name']}, Dose: {p['dose_mg']}mg, "
+                f"Frequency: {p['frequency']}, Route: {p['route']}, "
+                f"Duration: {p['duration_days']} days"
+            )
+
+        prescriptions_text = "Prescriptions:\n" + "\n".join(pres_lines) if pres_lines else "No prescriptions."
+
+        prompt = f"""{instruction}
+
+{patient_text}
+
+{prescriptions_text}
+
+Respond with JSON only."""
 
         response = client.chat.completions.create(
             model=MODEL_NAME,
@@ -154,111 +177,30 @@ Respond with JSON only, no markdown:"""
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
-            max_tokens=500,
+            max_tokens=600,
         )
 
         content = response.choices[0].message.content.strip()
+
+        if "```" in content:
+            for part in content.split("```"):
+                stripped = part.strip()
+                if stripped.startswith("json"):
+                    content = stripped[4:].strip()
+                    break
+                elif stripped.startswith("{"):
+                    content = stripped
+                    break
 
         return json.loads(content)
 
     except Exception as e:
         print("LLM ERROR:", e)
-
-        # ✅ fallback (THIS SAVES YOU)
         return {
             "drug_name": "Paracetamol",
             "is_valid": True,
             "verdict": "safe",
             "flag_dangerous": False,
             "reason": "Fallback response due to error"
-          }
-
-
-# ── Task Runner ───────────────────────────────────────────────────────────────
-
-def run_task(task_id: str) -> float:
-    log_start(task=task_id, env="rx-validator-env", model=MODEL_NAME)
-
-    # Reset environment
-    try:
-        resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
-        resp.raise_for_status()
-        obs = resp.json()
-    except Exception as e:
-        log_step(1, "reset", 0.00, True, str(e))
-        log_end(False, 1, [0.0])
-        return 0.0
-
-    rewards = []
-    final_reward = 0.0
-
-    for step_num in range(1, MAX_STEPS + 1):
-        # Call LLM
-        try:
-            action = call_llm(obs)
-            action_summary = f"validate({action.get('drug_name','?')})"
-        except Exception as e:
-            log_step(step_num, "llm_call", 0.00, True, str(e))
-            log_end(False, step_num, rewards + [0.0])
-            return final_reward
-
-        # Send action to environment
-        try:
-            step_resp = requests.post(f"{ENV_URL}/step", json=action, timeout=30)
-            step_resp.raise_for_status()
-            result = step_resp.json()
-        except Exception as e:
-            log_step(step_num, action_summary, 0.00, True, str(e))
-            log_end(False, step_num, rewards + [0.0])
-            return final_reward
-
-        reward = result.get("reward", 0.0)
-        done = result.get("done", True)
-        rewards.append(reward)
-        final_reward = reward
-
-        log_step(step_num, action_summary, reward, done, None)
-
-        if done:
-            break
-
-        obs = result.get("observation", obs)
-
-    success = final_reward >= SUCCESS_THRESHOLD
-    log_end(success, len(rewards), rewards)
-    return final_reward
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    print("=" * 60)
-    print("  Prescription Validator OpenEnv — Baseline Inference")
-    print(f"  Model  : {MODEL_NAME}")
-    print(f"  Router : {API_BASE_URL}")
-    print(f"  Env URL: {ENV_URL}")
-    print("=" * 60)
-
-    scores = {}
-    for task_id in ["task1", "task2", "task3"]:
-        print(f"\n--- Running {task_id} ---")
-        try:
-            scores[task_id] = round(run_task(task_id), 4)
-        except Exception as e:
-            print(f"ERROR: {e}")
-            scores[task_id] = 0.0
-
-    print("\n" + "=" * 60)
-    print("  FINAL SCORES")
-    print("=" * 60)
-    for tid, s in scores.items():
-        bar = "█" * int(s * 25)
-        print(f"  {tid}: {s:.4f}  {bar}")
-    avg = sum(scores.values()) / len(scores)
-    print(f"\n  Average: {avg:.4f}")
-    print("=" * 60)
-    return scores
-
-
-if __name__ == "__main__":
-    main()        
+      }
+if
