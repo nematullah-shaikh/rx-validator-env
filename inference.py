@@ -5,6 +5,7 @@ from typing import Optional
 
 HF_TOKEN     = os.environ.get("HF_TOKEN", "") or os.environ.get("OPENAI_API_KEY", "")
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+API_KEY = os.environ.get("API_KEY", "") or os.environ.get("HF_TOKEN", "") or os.environ.get("OPENAI_API_KEY", "")
 MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_URL      = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
 
@@ -42,7 +43,7 @@ FALLBACK = {
 def call_llm(obs):
     try:
         from openai import OpenAI
-        api_key = HF_TOKEN if HF_TOKEN else "hf-no-token"
+        api_key = API_KEY if API_KEY else "hf-no-token"
         client = OpenAI(base_url=API_BASE_URL, api_key=api_key)
 
         patient = obs.get("patient", {})
