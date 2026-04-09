@@ -108,4 +108,4 @@ class RxValidatorEnv:
             prescriptions=self._prescriptions,
             instruction=task_cls.instruction,
             step_count=self._step_count,
-        )
+            )
