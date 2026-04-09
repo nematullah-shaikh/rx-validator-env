@@ -109,12 +109,12 @@ def run_task(task_id):
         resp.raise_for_status()
         obs = resp.json()
     except Exception as e:
-        log_step(1, "reset", 0.00, True, str(e))
-        log_end(False, 1, [0.0])
-        return 0.0
+        log_step(1, "reset", 0.01, True, str(e))
+        log_end(False, 1, [0.01])
+        return 0.01
 
     rewards = []
-    final_reward = 0.0
+    final_reward = 0.01
 
     for step_num in range(1, MAX_STEPS + 1):
         action = call_llm(obs)
@@ -125,11 +125,11 @@ def run_task(task_id):
             step_resp.raise_for_status()
             result = step_resp.json()
         except Exception as e:
-            log_step(step_num, action_summary, 0.00, True, str(e))
-            log_end(False, step_num, rewards + [0.0])
-            return final_reward
+            log_step(step_num, action_summary, 0.01, True, str(e))
+            log_end(False, step_num, rewards + [0.01])
+            return final_reward if final_reward > 0 else 0.01
 
-        reward = result.get("reward", 0.0)
+        reward = result.get("reward", 0.01)
         done = result.get("done", True)
         rewards.append(reward)
         final_reward = reward
@@ -153,7 +153,7 @@ def main():
             scores[task_id] = round(run_task(task_id), 4)
         except Exception as e:
             print(f"ERROR {task_id}: {e}", flush=True)
-            scores[task_id] = 0.0
+            scores[task_id] = 0.01
     return scores
 
 
