@@ -45,7 +45,7 @@ class RxValidatorEnv:
         if self._done:
             return StepResponse(
                 observation=self._build_obs(),
-                reward=0.0,
+                reward=0.01,
                 done=True,
                 info={"message": "Episode complete. Call reset() to start a new episode."},
             )
