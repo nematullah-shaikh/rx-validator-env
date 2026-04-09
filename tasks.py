@@ -115,7 +115,7 @@ class Task1:
             score += 0.1
             notes.append("✓ correctly did not flag valid drug")
 
-        return round(min(1.0, score), 4), " | ".join(notes)
+        return round(min(0.99, max(0.01, score)), 4), " | ".join(notes)
 
 
 # ─── TASK 2 — Adult Dosage Verification (Medium) ─────────────────────────────
@@ -226,7 +226,7 @@ class Task2:
             else:
                 notes.append(f"~ recommended dose {rec}mg outside expected range {lo}-{hi}mg")
 
-        return round(min(1.0, score), 4), " | ".join(notes)
+        return round(min(0.99, max(0.01, score)), 4), " | ".join(notes)
 
 
 # ─── TASK 3 — Pediatric + Drug Interaction (Hard) ────────────────────────────
@@ -377,7 +377,7 @@ class Task3:
         else:
             notes.append("✗ dispense verdict wrong")
 
-        return round(min(1.0, score), 4), " | ".join(notes)
+        return round(min(0.99, max(0.01, score)), 4), " | ".join(notes)
 
 
 TASKS = {
