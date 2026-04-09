@@ -385,3 +385,4 @@ TASKS = {
     "task2": Task2,
     "task3": Task3,
 }
+
