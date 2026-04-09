@@ -26,13 +26,11 @@ class RxValidatorEnv:
         self._last_reward = 0.0
         self._episode_rewards = []
 
-        # ✅ FIXED (IMPORTANT)
         self._patient = self._scenario.get(
             "patient",
             Patient(age_years=30, weight_kg=70.0, sex="male", is_pediatric=False)
         )
 
-        # prescriptions fix
         pres = self._scenario.get("prescription")
         if pres:
             self._prescriptions = [pres]
@@ -42,6 +40,7 @@ class RxValidatorEnv:
         return self._build_obs()
 
     def step(self, action: Action) -> StepResponse:
+        # Prevent returning 0.0
         if self._done:
             return StepResponse(
                 observation=self._build_obs(),
@@ -55,10 +54,23 @@ class RxValidatorEnv:
 
         score, feedback = task_cls.grade(action, self._scenario)
 
-        # FIX indentation properly
-        score = min(0.99, max(0.01, score))
+        # Strict clamp (never 0 or 1)
+        if score <= 0.0:
+            score = 0.01
+        elif score >= 1.0:
+            score = 0.99
 
-        reward = round(min(0.99, max(0.01, score + 0.02 * (1.0 - score))), 4)
+        # Reward calculation
+        reward = score + 0.02 * (1.0 - score)
+
+        # Strict clamp again
+        if reward <= 0.0:
+            reward = 0.01
+        elif reward >= 1.0:
+            reward = 0.99
+
+        reward = round(reward, 4)
+
         self._last_reward = reward
         self._episode_rewards.append(reward)
 
@@ -69,7 +81,7 @@ class RxValidatorEnv:
             reward=reward,
             done=self._done,
             info={
-                min(0.99, max(0.01, score))
+                "grader_score": round(score, 4),
                 "grader_feedback": feedback,
                 "step_count": self._step_count,
                 "task_id": self._task_id,
