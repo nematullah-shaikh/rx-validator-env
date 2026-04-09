@@ -1,15 +1,11 @@
 import os
 import json
 import requests
-from openai import OpenAI
 
-client = OpenAI(
-    base_url=os.environ["API_BASE_URL"],
-    api_key=os.environ["API_KEY"]
-)
-
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-ENV_URL    = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
+MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_URL      = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY      = os.environ["API_KEY"]
 
 MAX_STEPS = 5
 SUCCESS_THRESHOLD = 0.5
@@ -40,6 +36,30 @@ def get_fallback(task_id):
         return {"drug_name": "Paracetamol", "is_valid": True, "verdict": "safe_to_dispense", "flag_dangerous": False, "interactions_found": [], "reason": "Fallback"}
 
 
+def call_llm_api(prompt):
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0,
+        "max_tokens": 500
+    }
+    resp = requests.post(
+        f"{API_BASE_URL}/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=60
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"].strip()
+
+
 def call_llm(obs):
     task_id = obs.get("task_id", "task1")
     try:
@@ -62,17 +82,7 @@ def call_llm(obs):
 
         prompt = f"{instruction}\n{patient_text}\n{pres_text}\n{schema}\nJSON only:"
 
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0,
-            max_tokens=500,
-        )
-
-        content = response.choices[0].message.content.strip()
+        content = call_llm_api(prompt)
 
         if "```" in content:
             for part in content.split("```"):
