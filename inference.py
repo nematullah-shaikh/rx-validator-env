@@ -44,12 +44,33 @@ def log_end(success, steps, rewards):
 
 # ================= FALLBACK =================
 def fallback_action(task_id):
-    return {
-        "drug_name": "Paracetamol",
-        "is_valid": True,
-        "flag_dangerous": False,
-        "reason": "fallback"
-    }
+    if task_id == "task1":
+        return {
+            "drug_name": "Paracetamol",
+            "is_valid": True,
+            "drug_class": "analgesic_antipyretic",
+            "flag_dangerous": False,
+            "reason": "fallback"
+        }
+    elif task_id == "task2":
+        return {
+            "drug_name": "Paracetamol",
+            "is_valid": True,
+            "drug_class": "analgesic_antipyretic",
+            "verdict": "safe",
+            "recommended_dose_mg": 500,
+            "flag_dangerous": False,
+            "reason": "fallback"
+        }
+    else:
+        return {
+            "drug_name": "Paracetamol",
+            "is_valid": True,
+            "verdict": "safe_to_dispense",
+            "flag_dangerous": False,
+            "interactions_found": [],
+            "reason": "fallback"
+        }
 
 
 # ================= LLM =================
@@ -64,9 +85,9 @@ def call_llm(prompt, task_id):
 
         content = resp.choices[0].message.content.strip()
 
+        # Extract JSON safely
         start = content.find("{")
         end = content.rfind("}")
-
         if start != -1 and end != -1 and end > start:
             return json.loads(content[start:end + 1])
 
@@ -79,7 +100,7 @@ def call_llm(prompt, task_id):
 # ================= SAFE REQUEST =================
 def safe_request(url, payload):
     try:
-        r = requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json=payload, timeout=15)
         r.raise_for_status()
         return r.json()
     except Exception:
@@ -113,7 +134,7 @@ def run_task(task_id):
 
             reward = float(result.get("reward", 0.01))
 
-            # 🔥 CRITICAL (DO NOT REMOVE)
+            # 🔥 REQUIRED: keep reward strictly between (0,1)
             reward = max(0.0001, min(reward, 0.9999))
 
             done = bool(result.get("done", False))
