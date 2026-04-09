@@ -55,7 +55,7 @@ class RxValidatorEnv:
 
         score, feedback = task_cls.grade(action, self._scenario)
 
-        reward = round(min(1.0, score + 0.02 * (1.0 - score)), 4)
+        reward = round(min(0.99, max(0.01, score + 0.02 * (1.0 - score))), 4)
         self._last_reward = reward
         self._episode_rewards.append(reward)
 
