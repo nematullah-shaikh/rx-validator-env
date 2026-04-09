@@ -1,16 +1,18 @@
 import os
 import json
 import requests
-from typing import Optional
+from openai import OpenAI
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY      = os.environ.get("API_KEY", "") or os.environ.get("HF_TOKEN", "")
-MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-ENV_URL      = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
+client = OpenAI(
+    base_url=os.environ["API_BASE_URL"],
+    api_key=os.environ["API_KEY"]
+)
+
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_URL    = os.environ.get("ENV_URL", "http://localhost:7860").rstrip("/")
 
 MAX_STEPS = 5
 SUCCESS_THRESHOLD = 0.5
-
 SYSTEM_PROMPT = "You are a clinical pharmacist AI. Respond in valid JSON only."
 
 
@@ -29,27 +31,21 @@ def log_end(success, steps, rewards):
     print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
-FALLBACK = {
-    "drug_name": "Paracetamol",
-    "is_valid": True,
-    "verdict": "safe",
-    "flag_dangerous": False,
-    "interactions_found": [],
-    "reason": "Fallback response"
-}
+def get_fallback(task_id):
+    if task_id == "task1":
+        return {"drug_name": "Paracetamol", "is_valid": True, "drug_class": "analgesic_antipyretic", "flag_dangerous": False, "reason": "Fallback"}
+    elif task_id == "task2":
+        return {"drug_name": "Paracetamol", "is_valid": True, "drug_class": "analgesic_antipyretic", "verdict": "safe", "recommended_dose_mg": 500, "flag_dangerous": False, "reason": "Fallback"}
+    else:
+        return {"drug_name": "Paracetamol", "is_valid": True, "verdict": "safe_to_dispense", "flag_dangerous": False, "interactions_found": [], "reason": "Fallback"}
 
 
 def call_llm(obs):
+    task_id = obs.get("task_id", "task1")
     try:
-        from openai import OpenAI
-        from openai import OpenAI
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-        client = OpenAI(base_url=API_BASE_URL, api_key=api_key)
-
         patient = obs.get("patient", {})
         prescriptions = obs.get("prescriptions", [])
         instruction = obs.get("instruction", "")
-        task_id = obs.get("task_id", "task1")
 
         pres_text = ""
         for p in prescriptions:
@@ -60,9 +56,9 @@ def call_llm(obs):
         if task_id == "task1":
             schema = "Return JSON: drug_name, is_valid (bool), drug_class, flag_dangerous (bool), reason"
         elif task_id == "task2":
-            schema = "Return JSON: drug_name, is_valid (bool), drug_class, verdict (safe/overdose/underdose), recommended_dose_mg, flag_dangerous (bool), reason"
+            schema = "Return JSON: drug_name, is_valid (bool), drug_class, verdict (safe/overdose/underdose), recommended_dose_mg (number), flag_dangerous (bool), reason"
         else:
-            schema = "Return JSON: drug_name, is_valid (bool), verdict (safe_to_dispense/do_not_dispense), flag_dangerous (bool), interactions_found (list), reason"
+            schema = "Return JSON: drug_name, is_valid (bool), verdict (safe_to_dispense/do_not_dispense), flag_dangerous (bool), interactions_found (list of strings), reason"
 
         prompt = f"{instruction}\n{patient_text}\n{pres_text}\n{schema}\nJSON only:"
 
@@ -91,36 +87,8 @@ def call_llm(obs):
         return json.loads(content)
 
     except Exception as e:
-        print(f"LLM fallback: {e}", flush=True)
-    if task_id == "task1":
-        return {
-        "drug_name": "Paracetamol",
-        "is_valid": True,
-        "drug_class": "Analgesic",
-        "flag_dangerous": False,
-        "reason": "Fallback"
-    }
-
-    elif task_id == "task2":
-        return {
-        "drug_name": "Paracetamol",
-        "is_valid": True,
-        "drug_class": "Analgesic",
-        "verdict": "safe",
-        "recommended_dose_mg": 500,
-        "flag_dangerous": False,
-        "reason": "Fallback"
-    }
-
-    else:
-        return {
-        "drug_name": "Paracetamol",
-        "is_valid": True,
-        "verdict": "safe_to_dispense",
-        "flag_dangerous": False,
-        "interactions_found": [],
-        "reason": "Fallback"
-    }
+        print(f"LLM error: {e}", flush=True)
+        return get_fallback(task_id)
 
 
 def run_task(task_id):
