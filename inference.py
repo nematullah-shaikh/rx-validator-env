@@ -1,28 +1,27 @@
 import os
 import json
 import requests
-from openai import OpenAI
+import openai  # ✅ OLD SDK
 
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860").rstrip("/")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1").rstrip("/")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# REQUIRED
+# ✅ REQUIRED
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
 
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=HF_TOKEN
-)
+# ✅ OLD SDK CONFIG
+openai.api_key = HF_TOKEN
+openai.api_base = API_BASE_URL
 
 MAX_STEPS = 5
 SUCCESS_THRESHOLD = 0.5
 SYSTEM_PROMPT = "You are a clinical pharmacist AI. Respond in valid JSON only."
 
 
-# LOGS (STRICT FORMAT)
+# ✅ LOGS
 
 def log_start(task):
     print(f"[START] task={task} env=rx-validator-env model={MODEL_NAME}", flush=True)
@@ -32,8 +31,7 @@ def log_step(step, action, reward, done, error):
     done_val = str(done).lower()
     error_val = error if error else "null"
 
-    # 🔥 FINAL FIX HERE
-    action_str = str(action)
+    action_str = str(action)  # ✅ SAFE FORMAT
 
     print(
         f"[STEP] step={step} action={action_str} reward={reward:.2f} done={done_val} error={error_val}",
@@ -49,7 +47,7 @@ def log_end(success, steps, rewards):
     )
 
 
-# FALLBACK
+# ✅ FALLBACK
 
 def get_fallback(task_id):
     if task_id == "task1":
@@ -60,7 +58,7 @@ def get_fallback(task_id):
         return {"drug_name": "Paracetamol", "is_valid": True, "verdict": "safe_to_dispense", "flag_dangerous": False, "interactions_found": [], "reason": "Fallback"}
 
 
-# LLM
+# ✅ LLM CALL (FIXED)
 
 def call_llm(obs):
     task_id = obs.get("task_id", "task1")
@@ -85,7 +83,7 @@ def call_llm(obs):
 
         prompt = f"{instruction}\n{patient_text}\n{pres_text}\n{schema}\nJSON only:"
 
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -95,8 +93,9 @@ def call_llm(obs):
             max_tokens=500,
         )
 
-        content = response.choices[0].message.content.strip()
+        content = response["choices"][0]["message"]["content"].strip()
 
+        # Extract JSON safely
         start = content.find("{")
         end = content.rfind("}") + 1
         if start != -1 and end != -1:
@@ -108,7 +107,7 @@ def call_llm(obs):
         return get_fallback(task_id)
 
 
-# RUN
+# ✅ RUN
 
 def run_task(task_id):
     rewards = []
@@ -150,7 +149,7 @@ def run_task(task_id):
     return final_reward
 
 
-# MAIN
+# ✅ MAIN
 
 def main():
     scores = {}
