@@ -53,6 +53,7 @@ class RxValidatorEnv:
         task_cls = TASKS[self._task_id]
 
         score, feedback = task_cls.grade(action, self._scenario)
+        score = max(0.02, min(0.98, float(score)))
 
         # Strict clamp (never 0 or 1)
         if score <= 0.0:
@@ -62,6 +63,7 @@ class RxValidatorEnv:
 
         # Reward calculation
         reward = score + 0.02 * (1.0 - score)
+        reward = max(0.0001, min(0.9999, float(reward)))
 
         # Strict clamp again
         if reward <= 0.0:
