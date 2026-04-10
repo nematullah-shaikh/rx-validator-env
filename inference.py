@@ -37,10 +37,12 @@ def log_step(step, action, reward, done, error):
 def log_end(success, steps, rewards):
     clamped = [max(0.0001, min(0.9999, r)) for r in rewards]
     rewards_str = ",".join(f"{r:.2f}" for r in clamped)
+    score = sum(clamped) / len(clamped) if clamped else 0.01
+    score = max(0.0001, min(0.9999, score))
     print(
-        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
         flush=True
-    )
+                )
 
 
 
