@@ -28,18 +28,20 @@ def log_start(task):
 
 
 def log_step(step, action, reward, done, error):
+    reward = max(0.0001, min(0.9999, reward))
     print(
         f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error if error else 'null'}",
         flush=True
     )
 
-
 def log_end(success, steps, rewards):
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    clamped = [max(0.0001, min(0.9999, r)) for r in rewards]
+    rewards_str = ",".join(f"{r:.2f}" for r in clamped)
     print(
         f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
         flush=True
     )
+
 
 
 # ================= FALLBACK =================
