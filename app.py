@@ -31,11 +31,13 @@ class ResetRequest(BaseModel):
     task_id: Optional[str] = "task1"
 
 
+# ================= HEALTH =================
 @app.get("/")
 def health():
     return {"status": "ok", "env": "rx-validator-env", "version": "1.0.0"}
 
 
+# ================= RESET =================
 @app.post("/reset", response_model=Observation)
 async def reset(request: Request):
     try:
@@ -43,19 +45,44 @@ async def reset(request: Request):
         task_id = body.get("task_id", "task1")
     except:
         task_id = "task1"
+
     return env.reset(task_id=task_id)
 
 
+# ================= STEP =================
 @app.post("/step", response_model=StepResponse)
 def step(action: Action):
-    return env.step(action)
+    try:
+        result = env.step(action)
+
+        # 🔥 CRITICAL FIX — clamp reward strictly (0,1)
+        result.reward = max(0.0001, min(0.9999, float(result.reward)))
+
+        # 🔒 EXTRA SAFETY — clamp grader_score
+        if result.info and "grader_score" in result.info:
+            result.info["grader_score"] = max(
+                0.0001,
+                min(0.9999, float(result.info["grader_score"]))
+            )
+
+        return result
+
+    except Exception as e:
+        return StepResponse(
+            observation=env._build_obs(),
+            reward=0.01,
+            done=True,
+            info={"error": str(e)}
+        )
 
 
+# ================= STATE =================
 @app.get("/state")
 def state():
     return env.state()
 
 
+# ================= TASKS =================
 @app.get("/tasks")
 def list_tasks():
     return {
@@ -92,5 +119,6 @@ def list_tasks():
     }
 
 
+# ================= RUN =================
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7860)
